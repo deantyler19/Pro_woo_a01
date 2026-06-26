@@ -16,11 +16,13 @@ struct SplashView: View {
             // 그라디언트 배경
             LinearGradient(
                 colors: [
-                    Color(red: 0.39, green: 0.20, blue: 0.87),
-                    Color(red: 0.28, green: 0.46, blue: 0.71)
+                    Color(red: 0.43, green: 0.16, blue: 0.85),  // violet-700
+                    Color(red: 0.39, green: 0.40, blue: 0.95),  // indigo-500
+                    Color(red: 0.23, green: 0.51, blue: 0.96),  // blue-500
+                    Color(red: 0.06, green: 0.73, blue: 0.51),  // emerald-500
                 ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
+                startPoint: .top,
+                endPoint: .bottom
             )
             .ignoresSafeArea()
 
