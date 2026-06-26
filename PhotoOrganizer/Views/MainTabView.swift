@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// 날짜별 / 장소별 / 중복사진 세 탭으로 구성된 메인 화면.
+/// 날짜별 / 장소별 / 얼굴별 / 중복사진 네 탭으로 구성된 메인 화면.
 struct MainTabView: View {
     @EnvironmentObject var library: PhotoLibraryService
 
@@ -14,6 +14,11 @@ struct MainTabView: View {
             LocationGroupView()
                 .tabItem {
                     Label("장소별", systemImage: "map")
+                }
+
+            FaceGroupView()
+                .tabItem {
+                    Label("얼굴별", systemImage: "person.2")
                 }
 
             DuplicatesView()
