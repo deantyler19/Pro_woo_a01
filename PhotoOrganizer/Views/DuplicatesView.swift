@@ -5,6 +5,7 @@ struct DuplicatesView: View {
     @EnvironmentObject var library: PhotoLibraryService
     @StateObject private var detector = DuplicateDetector()
     @State private var deletingGroupID: UUID?
+    @State private var showDeleteError = false
 
     var body: some View {
         NavigationStack {
@@ -44,6 +45,11 @@ struct DuplicatesView: View {
                 }
             }
             .navigationTitle("중복사진")
+            .alert("삭제하지 못했습니다", isPresented: $showDeleteError) {
+                Button("확인", role: .cancel) { }
+            } message: {
+                Text("사진을 삭제하지 못했습니다. 다시 시도해 주세요.")
+            }
             .toolbar {
                 if !detector.groups.isEmpty {
                     Button {
@@ -70,6 +76,8 @@ struct DuplicatesView: View {
         let success = await library.deleteAssets(toDelete)
         if success {
             detector.groups.removeAll { $0.id == group.id }
+        } else {
+            showDeleteError = true
         }
     }
 }

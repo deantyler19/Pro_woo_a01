@@ -29,8 +29,9 @@ struct SplashView: View {
             VStack(spacing: 0) {
                 Spacer()
 
-                // 아이콘
-                Image(uiImage: UIImage(named: "AppIcon") ?? UIImage(systemName: "photo.stack.fill")!)
+                // 아이콘 (앱 아이콘 에셋은 UIImage(named:)로 로드되지 않으므로
+                // 전용 SplashLogo 이미지셋을 사용한다.)
+                Image("SplashLogo")
                     .resizable()
                     .scaledToFit()
                     .frame(width: 120, height: 120)

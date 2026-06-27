@@ -39,16 +39,18 @@ final class LocationService: ObservableObject {
         }
 
         // 2) 각 군집의 대표 좌표를 지명으로 변환한다.
-        var result: [LocationGroup] = []
-        for (_, items) in clusters {
+        //    군집이 많으면 전체 완료까지 오래 걸리므로, 사진이 많은 군집부터
+        //    처리하고 결과를 점진적으로 반영해 사용자가 먼저 볼 수 있게 한다.
+        groups = []
+        let ordered = clusters.values.sorted { $0.count > $1.count }
+        for items in ordered {
             let representative = items.first?.location
             let name = await placeName(for: representative)
-            result.append(LocationGroup(name: name, items: items, representativeLocation: representative))
+            groups.append(LocationGroup(name: name, items: items,
+                                        representativeLocation: representative))
             // CLGeocoder 호출 제한(분당 약 50회)을 피하기 위해 잠시 대기.
             try? await Task.sleep(nanoseconds: 600_000_000)
         }
-
-        groups = result.sorted { $0.items.count > $1.items.count }
     }
 
     /// 좌표를 사람이 읽을 수 있는 지명으로 변환한다.

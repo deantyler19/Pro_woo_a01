@@ -34,17 +34,27 @@ final class DuplicateDetector: ObservableObject {
 
         let total = max(photos.count, 1)
         for (index, item) in photos.enumerated() {
-            if let hash = await computeHash(for: item) {
+            // 썸네일 로딩은 PhotoKit이 백그라운드에서, 해시 계산은 detached 태스크에서
+            // 처리해 @MainActor(=메인 스레드)를 점유하지 않도록 한다.
+            if let image = await requestSmallImage(for: item),
+               let hash = await Self.computeHash(from: image) {
                 hashes.append((item, hash))
             }
             progress = Double(index + 1) / Double(total)
         }
 
-        groups = groupSimilar(hashes)
+        // 유사도 그룹화(O(n²) 정수 연산)도 백그라운드로 오프로드.
+        let threshold = similarityThreshold
+        groups = await Task.detached(priority: .userInitiated) {
+            Self.groupSimilar(hashes, threshold: threshold)
+        }.value
     }
 
-    /// 해시 목록을 유사도 기준으로 묶는다.
-    private func groupSimilar(_ hashes: [(item: PhotoItem, hash: UInt64)]) -> [DuplicateGroup] {
+    /// 해시 목록을 유사도 기준으로 묶는다. (백그라운드에서 호출)
+    nonisolated private static func groupSimilar(
+        _ hashes: [(item: PhotoItem, hash: UInt64)],
+        threshold: Int
+    ) -> [DuplicateGroup] {
         var used = Set<Int>()
         var result: [DuplicateGroup] = []
 
@@ -53,7 +63,7 @@ final class DuplicateDetector: ObservableObject {
             var group = [hashes[i].item]
             for j in (i + 1)..<hashes.count {
                 if used.contains(j) { continue }
-                if hammingDistance(hashes[i].hash, hashes[j].hash) <= similarityThreshold {
+                if hammingDistance(hashes[i].hash, hashes[j].hash) <= threshold {
                     group.append(hashes[j].item)
                     used.insert(j)
                 }
@@ -67,13 +77,15 @@ final class DuplicateDetector: ObservableObject {
         return result.sorted { $0.items.count > $1.items.count }
     }
 
-    private func computeHash(for item: PhotoItem) async -> UInt64? {
-        guard let image = await requestSmallImage(for: item) else { return nil }
-        return averageHash(image)
+    /// 썸네일로부터 해시를 계산한다. detached 태스크에서 백그라운드 실행.
+    nonisolated private static func computeHash(from image: UIImage) async -> UInt64? {
+        await Task.detached(priority: .userInitiated) {
+            averageHash(image)
+        }.value
     }
 
-    /// 8×8 흑백 평균 해시(aHash)를 계산한다.
-    private func averageHash(_ image: UIImage) -> UInt64? {
+    /// 8×8 흑백 평균 해시(aHash)를 계산한다. (백그라운드에서 호출)
+    nonisolated private static func averageHash(_ image: UIImage) -> UInt64? {
         guard let cgImage = image.cgImage else { return nil }
         let width = 8, height = 8
         var pixels = [UInt8](repeating: 0, count: width * height)
@@ -101,7 +113,7 @@ final class DuplicateDetector: ObservableObject {
         return hash
     }
 
-    private func hammingDistance(_ a: UInt64, _ b: UInt64) -> Int {
+    nonisolated private static func hammingDistance(_ a: UInt64, _ b: UInt64) -> Int {
         (a ^ b).nonzeroBitCount
     }
 

@@ -22,7 +22,7 @@
                                 <color key="backgroundColor" red="0.392" green="0.196" blue="0.863" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
                             </view>
                             <!-- 중앙 아이콘 이미지 뷰 -->
-                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" translatesAutoresizingMaskIntoConstraints="NO" id="img-icon" image="AppIcon-60@3x">
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="scaleAspectFit" translatesAutoresizingMaskIntoConstraints="NO" id="img-icon" image="SplashLogo">
                                 <rect key="frame" x="136.5" y="346" width="120" height="120"/>
                             </imageView>
                             <!-- 앱 이름 레이블 -->
@@ -67,4 +67,7 @@
             <point key="canvasLocation" x="53" y="375"/>
         </scene>
     </scenes>
+    <resources>
+        <image name="SplashLogo" width="120" height="120"/>
+    </resources>
 </document>

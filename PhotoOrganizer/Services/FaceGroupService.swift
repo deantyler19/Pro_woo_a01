@@ -61,7 +61,12 @@ final class FaceGroupService: ObservableObject {
         let total = max(photos.count, 1)
 
         for (idx, item) in photos.enumerated() {
-            let n = await detectFaceCount(item)
+            // 썸네일 로딩(PhotoKit, 백그라운드) → CGImage 추출 → Vision 추론은
+            // detached 태스크에서 실행해 메인 스레드 멈춤을 방지한다.
+            var n = 0
+            if let image = await requestSmall(item), let cg = image.cgImage {
+                n = await Self.detectFaceCount(cg)
+            }
             let key = min(n, 3)
             buckets[key, default: []].append(item)
             progress = Double(idx + 1) / Double(total)
@@ -83,20 +88,28 @@ final class FaceGroupService: ObservableObject {
 
     // MARK: - Private
 
-    private func detectFaceCount(_ item: PhotoItem) async -> Int {
-        guard let image = await requestSmall(item),
-              let cg = image.cgImage else { return 0 }
-
-        return await withCheckedContinuation { cont in
-            let req = VNDetectFaceRectanglesRequest { req, err in
-                guard err == nil,
-                      let res = req.results as? [VNFaceObservation] else {
-                    cont.resume(returning: 0); return
+    /// CGImage에서 얼굴 수를 검출한다. Vision 추론은 CPU 집약·동기이므로
+    /// detached 태스크(백그라운드)에서 실행한다.
+    nonisolated private static func detectFaceCount(_ cg: CGImage) async -> Int {
+        await Task.detached(priority: .userInitiated) {
+            await withCheckedContinuation { cont in
+                var done = false
+                let req = VNDetectFaceRectanglesRequest { req, err in
+                    guard !done else { return }
+                    done = true
+                    guard err == nil,
+                          let res = req.results as? [VNFaceObservation] else {
+                        cont.resume(returning: 0); return
+                    }
+                    cont.resume(returning: res.count)
                 }
-                cont.resume(returning: res.count)
+                do {
+                    try VNImageRequestHandler(cgImage: cg, options: [:]).perform([req])
+                } catch {
+                    if !done { done = true; cont.resume(returning: 0) }
+                }
             }
-            try? VNImageRequestHandler(cgImage: cg, options: [:]).perform([req])
-        }
+        }.value
     }
 
     private func requestSmall(_ item: PhotoItem) async -> UIImage? {

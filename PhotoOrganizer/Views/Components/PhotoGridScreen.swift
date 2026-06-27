@@ -11,6 +11,7 @@ struct PhotoGridScreen: View {
     @State private var selectedIDs: Set<String> = []
     @State private var deletedIDs:  Set<String> = []
     @State private var showConfirm  = false
+    @State private var showDeleteError = false
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
 
@@ -79,6 +80,11 @@ struct PhotoGridScreen: View {
                 Task { await deleteSelected() }
             }
         }
+        .alert("삭제하지 못했습니다", isPresented: $showDeleteError) {
+            Button("확인", role: .cancel) { }
+        } message: {
+            Text("사진을 삭제하지 못했습니다. 다시 시도해 주세요.")
+        }
     }
 
     // MARK: - 하단 삭제 바
@@ -116,12 +122,18 @@ struct PhotoGridScreen: View {
 
     private func deleteSelected() async {
         let toDelete = displayItems.filter { selectedIDs.contains($0.id) }
-        // 즉시 UI에서 제거
-        deletedIDs.formUnion(selectedIDs)
-        selectedIDs.removeAll()
+        let targetIDs = selectedIDs
         isEditing = false
-        // 실제 삭제 (시스템이 확인 다이얼로그를 보여줌)
-        await library.deleteAssets(toDelete)
+
+        // 실제 삭제 (시스템이 확인 다이얼로그를 보여줌). 성공했을 때만 UI에서
+        // 제거해 화면 상태와 보관함을 일치시킨다. 사용자가 취소하면 그대로 둔다.
+        let success = await library.deleteAssets(toDelete)
+        if success {
+            deletedIDs.formUnion(targetIDs)
+        } else {
+            showDeleteError = true
+        }
+        selectedIDs.removeAll()
     }
 }
 
