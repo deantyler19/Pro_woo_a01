@@ -120,7 +120,7 @@ final class PhotoLibraryService: ObservableObject {
     }
 
     /// PHAssetResource에서 파일 크기(bytes)를 읽는 nonisolated 도우미.
-    /// continuation은 정확히 한 번만 resume한다.
+    /// `fileSize` 키는 동기 접근이므로 continuation 없이 바로 반환한다.
     nonisolated private static func fetchFileSizeBytes(asset: PHAsset) async -> Int64? {
         let resources = PHAssetResource.assetResources(for: asset)
         // .video 타입 리소스를 우선 선택
@@ -128,26 +128,12 @@ final class PhotoLibraryService: ObservableObject {
             return nil
         }
 
-        // PHAssetResourceManager는 콜백 기반이므로 continuation으로 감싼다.
-        return await withCheckedContinuation { continuation in
-            var resumed = false
-            let options = PHAssetResourceRequestOptions()
-            options.isNetworkAccessAllowed = false  // iCloud 다운로드 금지
-
-            // fileSize 키를 직접 읽는다(iOS 9+).
-            if let fileSize = resource.value(forKey: "fileSize") as? Int64 {
-                resumed = true
-                continuation.resume(returning: fileSize)
-                return
-            }
-
-            // fileSize 키가 없으면 데이터를 일부 받아 크기를 추정할 수도 있으나
-            // 여기서는 실패 fallback으로 nil을 리턴한다(네트워크 없이 안전하게).
-            if !resumed {
-                resumed = true
-                continuation.resume(returning: nil)
-            }
+        // PHAssetResource는 비공개 'fileSize' 키로 바이트 크기를 동기 제공한다(iOS 9+).
+        // 반환 타입이 NSNumber이므로 안전하게 캐스팅한다. 키가 없으면 nil(네트워크 미사용).
+        if let number = resource.value(forKey: "fileSize") as? NSNumber {
+            return number.int64Value
         }
+        return nil
     }
 
     // MARK: - 대용량 동영상 fetch

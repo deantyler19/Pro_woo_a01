@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 // MARK: - 컬러 토큰
 
@@ -20,9 +21,17 @@ extension Color {
     static let warning      = Color(red: 0.96, green: 0.62, blue: 0.04) // #F59E0B 앰버-500
     static let warningLight = Color(red: 1.00, green: 0.98, blue: 0.92) // #FFFBEB
 
-    // 스켈레톤 shimmer (다크모드 대응은 Asset Catalog 등록 권장 — Mac 빌드 필요)
-    static let shimmerBase      = Color(red: 0.89, green: 0.89, blue: 0.95) // #E4E4F2
-    static let shimmerHighlight = Color(red: 0.96, green: 0.96, blue: 0.98) // #F4F4FA
+    // 스켈레톤 shimmer — UIColor 동적 제공자로 라이트/다크 모드를 모두 대응한다.
+    static let shimmerBase = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(white: 0.22, alpha: 1)                       // 다크: 어두운 회색
+            : UIColor(red: 0.89, green: 0.89, blue: 0.95, alpha: 1) // 라이트: #E4E4F2
+    })
+    static let shimmerHighlight = Color(uiColor: UIColor { trait in
+        trait.userInterfaceStyle == .dark
+            ? UIColor(white: 0.32, alpha: 1)                       // 다크: 밝은 회색 하이라이트
+            : UIColor(red: 0.96, green: 0.96, blue: 0.98, alpha: 1) // 라이트: #F4F4FA
+    })
 }
 
 // MARK: - 카드 스타일 모디파이어
