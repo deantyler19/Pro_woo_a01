@@ -7,6 +7,7 @@ struct PhotoGridScreen: View {
     let items: [PhotoItem]
 
     @EnvironmentObject var library: PhotoLibraryService
+    @EnvironmentObject var statsStore: StatsStore
     @State private var isEditing = false
     @State private var selectedIDs: Set<String> = []
     @State private var deletedIDs:  Set<String> = []
@@ -65,10 +66,14 @@ struct PhotoGridScreen: View {
                 }
             }
         }
-        // 하단 삭제 바
+        // 하단 삭제 바 — DeleteActionBar로 추출해 공유
         .safeAreaInset(edge: .bottom) {
             if isEditing && !selectedIDs.isEmpty {
-                deleteBar
+                DeleteActionBar(
+                    selectedCount: selectedIDs.count,
+                    countUnit: "장",
+                    onDelete: { showConfirm = true }
+                )
             }
         }
         .confirmationDialog(
@@ -87,37 +92,6 @@ struct PhotoGridScreen: View {
         }
     }
 
-    // MARK: - 하단 삭제 바
-
-    private var deleteBar: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(selectedIDs.count)장 선택됨")
-                    .font(.subheadline.bold())
-                    .foregroundStyle(.primary)
-                Text("삭제하면 복구가 어렵습니다")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer()
-            Button(role: .destructive) {
-                showConfirm = true
-            } label: {
-                Label("삭제", systemImage: "trash.fill")
-                    .font(.subheadline.bold())
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(.red)
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
-        .background(.regularMaterial, in: Rectangle())
-        .shadow(color: .black.opacity(0.06), radius: 12, y: -4)
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
     // MARK: - 삭제
 
     private func deleteSelected() async {
@@ -129,6 +103,8 @@ struct PhotoGridScreen: View {
         // 제거해 화면 상태와 보관함을 일치시킨다. 사용자가 취소하면 그대로 둔다.
         let success = await library.deleteAssets(toDelete)
         if success {
+            // 삭제 성공 시 StatsStore에 기록
+            statsStore.recordDeletion(items: toDelete)
             deletedIDs.formUnion(targetIDs)
         } else {
             showDeleteError = true

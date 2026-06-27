@@ -3,6 +3,7 @@ import SwiftUI
 /// "중복사진" 탭. 유사·중복 사진을 찾아 묶고, 묶음별로 정리(삭제)할 수 있다.
 struct DuplicatesView: View {
     @EnvironmentObject var library: PhotoLibraryService
+    @EnvironmentObject var statsStore: StatsStore
     @StateObject private var detector = DuplicateDetector()
     @State private var deletingGroupID: UUID?
     @State private var showDeleteError = false
@@ -75,6 +76,8 @@ struct DuplicatesView: View {
         let toDelete = Array(group.items.dropFirst())
         let success = await library.deleteAssets(toDelete)
         if success {
+            // 삭제 성공 시 StatsStore에 성과 기록
+            statsStore.recordDeletion(items: toDelete)
             detector.groups.removeAll { $0.id == group.id }
         } else {
             showDeleteError = true
