@@ -62,25 +62,42 @@ final class FaceGroupService: ObservableObject {
         }.value
     }
 
-    /// Vision 기반 얼굴 수 스캔.
+    /// 동시에 처리할 사진 수. 메모리 급증을 막기 위해 제한한다.
+    private let maxConcurrent = 6
+
+    /// Vision 기반 얼굴 수 스캔. 최대 maxConcurrent개씩 병렬로 처리한다(순차 대비 수 배 빠름).
     func scanFaces(photos: [PhotoItem]) async {
         isScanning = true
         progress = 0
         defer { isScanning = false }
 
-        var buckets: [Int: [PhotoItem]] = [0: [], 1: [], 2: [], 3: []]
         let total = max(photos.count, 1)
+        var completed = 0
+        // (원본 순서, item, 얼굴 수) — 완료 순서가 뒤섞이므로 인덱스로 보관 후 정렬한다.
+        var results: [(Int, PhotoItem, Int)] = []
+        results.reserveCapacity(photos.count)
 
-        for (idx, item) in photos.enumerated() {
-            // 썸네일 로딩(PhotoKit, 백그라운드) → CGImage 추출 → Vision 추론은
-            // detached 태스크에서 실행해 메인 스레드 멈춤을 방지한다.
-            var n = 0
-            if let image = await requestSmall(item), let cg = image.cgImage {
-                n = await Self.detectFaceCount(cg)
+        await withTaskGroup(of: (Int, PhotoItem, Int).self) { group in
+            var iterator = photos.enumerated().makeIterator()
+            for _ in 0..<maxConcurrent {
+                guard let (idx, item) = iterator.next() else { break }
+                group.addTask { await self.faceCountTask(index: idx, item: item) }
             }
-            let key = min(n, 3)
-            buckets[key, default: []].append(item)
-            progress = Double(idx + 1) / Double(total)
+            while let triple = await group.next() {
+                results.append(triple)
+                completed += 1
+                progress = Double(completed) / Double(total)
+                if let (nextIdx, nextItem) = iterator.next() {
+                    group.addTask { await self.faceCountTask(index: nextIdx, item: nextItem) }
+                }
+            }
+        }
+
+        // 입력 순서(최신순) 복원 후 얼굴 수 기준 버킷팅
+        results.sort { $0.0 < $1.0 }
+        var buckets: [Int: [PhotoItem]] = [0: [], 1: [], 2: [], 3: []]
+        for (_, item, n) in results {
+            buckets[min(n, 3), default: []].append(item)
         }
 
         let labels: [(Int, String, String)] = [
@@ -98,6 +115,15 @@ final class FaceGroupService: ObservableObject {
     }
 
     // MARK: - Private
+
+    /// 한 장의 썸네일을 받아 얼굴 수를 검출한다. 여러 개가 동시에 실행된다.
+    private func faceCountTask(index: Int, item: PhotoItem) async -> (Int, PhotoItem, Int) {
+        guard let image = await requestSmall(item), let cg = image.cgImage else {
+            return (index, item, 0)
+        }
+        let n = await Self.detectFaceCount(cg)
+        return (index, item, n)
+    }
 
     /// CGImage에서 얼굴 수를 검출한다. Vision 추론은 CPU 집약·동기이므로
     /// detached 태스크(백그라운드)에서 실행한다.

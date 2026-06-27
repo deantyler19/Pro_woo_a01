@@ -24,53 +24,85 @@ final class DuplicateDetector: ObservableObject {
 
     private let imageManager = PHImageManager.default()
 
+    /// 동시에 처리할 썸네일 수. 메모리 급증을 막기 위해 제한한다.
+    private let maxConcurrent = 6
+
     func scan(photos: [PhotoItem]) async {
         isScanning = true
         progress = 0
         defer { isScanning = false }
 
-        var hashes: [(item: PhotoItem, hash: UInt64)] = []
-        hashes.reserveCapacity(photos.count)
-
         let total = max(photos.count, 1)
-        for (index, item) in photos.enumerated() {
-            // 썸네일 로딩은 PhotoKit이 백그라운드에서, 해시 계산은 detached 태스크에서
-            // 처리해 @MainActor(=메인 스레드)를 점유하지 않도록 한다.
-            if let image = await requestSmallImage(for: item),
-               let hash = await Self.computeHash(from: image) {
-                hashes.append((item, hash))
+        var completed = 0
+        // (원본 순서, item, hash) — 완료 순서가 뒤섞이므로 인덱스로 다시 정렬한다.
+        var results: [(Int, PhotoItem, UInt64)] = []
+        results.reserveCapacity(photos.count)
+
+        // 최대 maxConcurrent개씩 병렬로 썸네일+해시를 계산한다(순차 대비 수 배 빠름).
+        await withTaskGroup(of: (Int, PhotoItem, UInt64?).self) { group in
+            var iterator = photos.enumerated().makeIterator()
+            for _ in 0..<maxConcurrent {
+                guard let (idx, item) = iterator.next() else { break }
+                group.addTask { await self.hashTask(index: idx, item: item) }
             }
-            progress = Double(index + 1) / Double(total)
+            while let (idx, item, hash) = await group.next() {
+                if let hash { results.append((idx, item, hash)) }
+                completed += 1
+                progress = Double(completed) / Double(total)
+                if let (nextIdx, nextItem) = iterator.next() {
+                    group.addTask { await self.hashTask(index: nextIdx, item: nextItem) }
+                }
+            }
         }
 
-        // 유사도 그룹화(O(n²) 정수 연산)도 백그라운드로 오프로드.
+        // 입력 순서(최신순)를 복원
+        results.sort { $0.0 < $1.0 }
+        let hashes = results.map { (item: $0.1, hash: $0.2) }
+
         let threshold = similarityThreshold
         groups = await Task.detached(priority: .userInitiated) {
             Self.groupSimilar(hashes, threshold: threshold)
         }.value
     }
 
+    /// 한 장의 썸네일을 받아 해시를 계산한다. 여러 개가 동시에 실행된다.
+    private func hashTask(index: Int, item: PhotoItem) async -> (Int, PhotoItem, UInt64?) {
+        guard let image = await requestSmallImage(for: item) else { return (index, item, nil) }
+        let hash = await Self.computeHash(from: image)
+        return (index, item, hash)
+    }
+
     /// 해시 목록을 유사도 기준으로 묶는다. (백그라운드에서 호출)
+    /// 먼저 동일 해시끼리 O(n)으로 묶어 비교 대상을 "서로 다른 해시"로 줄인 뒤
+    /// 해밍 거리 비교를 수행해 O(n²)의 n을 크게 낮춘다(결과는 동일).
     nonisolated private static func groupSimilar(
         _ hashes: [(item: PhotoItem, hash: UInt64)],
         threshold: Int
     ) -> [DuplicateGroup] {
+        // 1) 동일 해시(정확 중복) 먼저 묶기 — 입력 순서 유지
+        var byHash: [UInt64: [PhotoItem]] = [:]
+        var distinct: [UInt64] = []
+        for (item, hash) in hashes {
+            if byHash[hash] == nil { distinct.append(hash) }
+            byHash[hash, default: []].append(item)
+        }
+
+        // 2) 서로 다른 해시들만 해밍 거리로 병합
         var used = Set<Int>()
         var result: [DuplicateGroup] = []
-
-        for i in hashes.indices {
+        for i in distinct.indices {
             if used.contains(i) { continue }
-            var group = [hashes[i].item]
-            for j in (i + 1)..<hashes.count {
+            var items = byHash[distinct[i]] ?? []
+            for j in (i + 1)..<distinct.count {
                 if used.contains(j) { continue }
-                if hammingDistance(hashes[i].hash, hashes[j].hash) <= threshold {
-                    group.append(hashes[j].item)
+                if hammingDistance(distinct[i], distinct[j]) <= threshold {
+                    items.append(contentsOf: byHash[distinct[j]] ?? [])
                     used.insert(j)
                 }
             }
-            if group.count > 1 {
+            if items.count > 1 {
                 used.insert(i)
-                result.append(DuplicateGroup(items: group))
+                result.append(DuplicateGroup(items: items))
             }
         }
         // 중복이 많은 묶음을 먼저 보여준다.

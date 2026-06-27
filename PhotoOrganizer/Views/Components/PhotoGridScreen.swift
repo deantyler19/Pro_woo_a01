@@ -46,6 +46,13 @@ struct PhotoGridScreen: View {
             ? (selectedIDs.isEmpty ? "선택" : "\(selectedIDs.count)장 선택됨")
             : title)
         .navigationBarTitleDisplayMode(.inline)
+        // 격자 진입 시 썸네일을 미리 캐싱해 스크롤 시 즉시 표시되게 한다.
+        .onAppear {
+            library.startCaching(displayItems, targetSize: CGSize(width: 300, height: 300))
+        }
+        .onDisappear {
+            library.stopAllCaching()
+        }
         .toolbar {
             // 선택 / 완료 버튼
             ToolbarItem(placement: .topBarTrailing) {
