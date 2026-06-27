@@ -82,9 +82,10 @@ final class CategoryCleanupViewModel: ObservableObject {
         withAnimation(.easeIn(duration: 0.2)) {
             fileSizes = newSizes
         }
-        // videoItems의 fileSizeMB도 갱신
+        // videoItems의 fileSizeMB도 갱신. O(n²) 선형 검색 대신 딕셔너리로 O(n) 룩업.
+        let updatedByID = Dictionary(uniqueKeysWithValues: items.map { ($0.id, $0) })
         for i in videoItems.indices {
-            if let updated = items.first(where: { $0.id == videoItems[i].id }) {
+            if let updated = updatedByID[videoItems[i].id] {
                 videoItems[i] = updated
             }
         }

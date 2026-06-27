@@ -143,6 +143,16 @@ struct VideoRow: View {
 // MARK: - VideoItem 뷰 헬퍼 extension
 
 extension VideoItem {
+    /// 한국어 날짜 포맷터. 생성 비용이 크므로 정적으로 한 번만 만들어 공유한다.
+    /// (리스트 셀마다 매 렌더에서 재생성하던 것을 제거)
+    private static let dateFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .medium
+        f.timeStyle = .none
+        f.locale = Locale(identifier: "ko_KR")
+        return f
+    }()
+
     /// 날짜 기반 표시 제목
     var displayTitle: String {
         "동영상 \(formattedDate)"
@@ -151,10 +161,6 @@ extension VideoItem {
     /// 한국어 날짜 포맷 (2026. 6. 27.)
     var formattedDate: String {
         guard let date = creationDate else { return "날짜 없음" }
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        f.locale = Locale(identifier: "ko_KR")
-        return f.string(from: date)
+        return Self.dateFormatter.string(from: date)
     }
 }

@@ -8,6 +8,7 @@ struct StatsView: View {
     @EnvironmentObject var statsStore: StatsStore
     @StateObject private var vm = StatsViewModel()
     @State private var showLimitedBanner = false
+    @State private var hasLoaded = false
 
     var body: some View {
         NavigationStack {
@@ -33,13 +34,12 @@ struct StatsView: View {
             .navigationBarTitleDisplayMode(.large)
         }
         .task {
+            // 탭 전환 시 .task가 매번 재실행되므로 최초 1회만 로드한다.
+            // 명시적 새로고침은 .refreshable이 담당한다.
+            guard !hasLoaded else { return }
+            hasLoaded = true
             await vm.load(library: library, statsStore: statsStore)
             showLimitedBanner = (library.authorizationStatus == .limited)
-        }
-        // statsStore가 변경될 때 세션 데이터 반영
-        .onChange(of: statsStore.deletedCount) { _, _ in
-            vm.sessionDeletedCount = statsStore.deletedCount
-            vm.sessionSavedMB = statsStore.savedMBString
         }
     }
 
@@ -85,6 +85,12 @@ struct StatsView: View {
                     .padding(.horizontal, 12)
                 }
 
+                // 총 용량은 픽셀 기반 추정치임을 명시(실제 파일 크기 아님)
+                Text("* 총 용량은 픽셀 기반 추정치입니다")
+                    .font(.caption2)
+                    .foregroundStyle(Color.text3)
+                    .padding(.horizontal, 16)
+
                 sectionDivider
 
                 // ── 섹션 2: 이번 정리 성과 ──
@@ -97,25 +103,27 @@ struct StatsView: View {
                         .padding(.horizontal, 16)
                 }
 
-                if vm.sessionDeletedCount == 0 && !vm.isLoading {
+                if statsStore.deletedCount == 0 && !vm.isLoading {
                     // 빈 성과 상태 — 아직 정리 기록 없음
                     emptyAchievementView
                 } else {
+                    // 숫자·단위를 statsStore에서 직접 읽어 항상 동기화된 값을 표시한다.
+                    let saved = statsStore.savedDisplay
                     HStack(spacing: 12) {
                         AchieveBadge(
                             icon: "trash.fill",
                             iconColor: .danger,
                             label: "삭제한 사진",
-                            value: "\(vm.sessionDeletedCount)",
+                            value: "\(statsStore.deletedCount)",
                             unit: "장",
                             isLoading: vm.isLoading
                         )
                         AchieveBadge(
                             icon: "externaldrive",
                             iconColor: .success,
-                            label: "절약한 용량",
-                            value: vm.sessionSavedMB,
-                            unit: statsStore.savedUnit,
+                            label: "절약한 용량 (추정)",
+                            value: saved.value,
+                            unit: saved.unit,
                             isLoading: vm.isLoading
                         )
                     }

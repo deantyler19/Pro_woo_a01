@@ -13,9 +13,8 @@ final class StatsViewModel: ObservableObject {
     @Published var largeVideoCount: Int = 0
     @Published var errorMessage: String? = nil
 
-    // 세션 성과 — StatsStore에서 읽어 표시 문자열로 가공. @Published로 선언해 뷰 갱신 보장.
-    @Published var sessionDeletedCount: Int = 0
-    @Published var sessionSavedMB: String = "0"
+    // 세션 성과(삭제 수·절약 용량)는 StatsView가 StatsStore에서 직접 읽어
+    // 항상 동기화된 값을 표시한다. (뷰모델에 복사본을 두면 갱신 타이밍이 어긋남)
 
     func load(library: PhotoLibraryService, statsStore: StatsStore) async {
         isLoading = true
@@ -45,10 +44,6 @@ final class StatsViewModel: ObservableObject {
         }.value
 
         totalGB = String(format: "%.1f", estimatedGB)
-
-        // StatsStore 세션 데이터 반영
-        sessionDeletedCount = statsStore.deletedCount
-        sessionSavedMB = statsStore.savedMBString
     }
 
     // MARK: - 포맷 헬퍼

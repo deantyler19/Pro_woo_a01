@@ -56,18 +56,13 @@ final class StatsStore: ObservableObject {
 
     // MARK: - 표현값 헬퍼
 
-    /// 절약한 용량을 MB 단위 문자열로 반환한다.
-    var savedMBString: String {
+    /// 절약한 용량의 숫자와 단위를 **한 번에** 계산해 반환한다.
+    /// 숫자·단위를 따로 읽어 갱신 타이밍이 어긋나는(예: "1.3 MB") 문제를 막는다.
+    var savedDisplay: (value: String, unit: String) {
         let mb = Double(estimatedSavedBytes) / 1_048_576
         if mb >= 1024 {
-            return String(format: "%.1f", mb / 1024)  // GB 단위는 StatsView에서 분기
+            return (String(format: "%.1f", mb / 1024), "GB")
         }
-        return String(format: "%.0f", mb)
-    }
-
-    /// GB 단위인지 여부. StatsView에서 단위 문자열 표시에 사용.
-    var savedUnit: String {
-        let mb = Double(estimatedSavedBytes) / 1_048_576
-        return mb >= 1024 ? "GB" : "MB"
+        return (String(format: "%.0f", mb), "MB")
     }
 }

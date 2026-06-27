@@ -186,6 +186,11 @@ final class PhotoLibraryService: ObservableObject {
             options.deliveryMode = .highQualityFormat
             options.resizeMode = .fast
             var resumed = false
+            func finish(_ image: UIImage?) {
+                guard !resumed else { return }
+                resumed = true
+                continuation.resume(returning: image)
+            }
             imageManager.requestImage(
                 for: item.asset,
                 targetSize: targetSize,
@@ -193,14 +198,20 @@ final class PhotoLibraryService: ObservableObject {
                 options: options
             ) { image, info in
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                guard !resumed, !isDegraded else { return }
-                resumed = true
-                continuation.resume(returning: image)
+                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let hasError = info?[PHImageErrorKey] != nil
+                if !isDegraded {
+                    finish(image)
+                } else if isCancelled || hasError {
+                    finish(nil)
+                }
             }
         }
     }
 
     /// 동영상 에셋의 썸네일을 비동기로 가져온다.
+    /// 네트워크 비허용 상태에서 iCloud 전용 자산이면 고품질 콜백이 오지 않으므로,
+    /// 취소·에러·iCloud 신호가 오면 즉시 nil로 종료해 continuation 누수를 막는다.
     func requestVideoThumbnail(for item: VideoItem, targetSize: CGSize) async -> UIImage? {
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
@@ -208,6 +219,11 @@ final class PhotoLibraryService: ObservableObject {
             options.deliveryMode = .highQualityFormat
             options.resizeMode = .fast
             var resumed = false
+            func finish(_ image: UIImage?) {
+                guard !resumed else { return }
+                resumed = true
+                continuation.resume(returning: image)
+            }
             imageManager.requestImage(
                 for: item.asset,
                 targetSize: targetSize,
@@ -215,9 +231,17 @@ final class PhotoLibraryService: ObservableObject {
                 options: options
             ) { image, info in
                 let isDegraded = (info?[PHImageResultIsDegradedKey] as? Bool) ?? false
-                guard !resumed, !isDegraded else { return }
-                resumed = true
-                continuation.resume(returning: image)
+                let isCancelled = (info?[PHImageCancelledKey] as? Bool) ?? false
+                let hasError = info?[PHImageErrorKey] != nil
+                let inCloud = (info?[PHImageResultIsInCloudKey] as? Bool) ?? false
+                if !isDegraded {
+                    // 최종(고품질) 결과 도착 → 그 값으로 종료
+                    finish(image)
+                } else if isCancelled || hasError || inCloud {
+                    // 더 이상 콜백이 오지 않을 상황 → 즉시 종료(누수 방지)
+                    finish(nil)
+                }
+                // 그 외 저품질 중간 결과는 무시하고 최종 콜백을 기다린다.
             }
         }
     }
