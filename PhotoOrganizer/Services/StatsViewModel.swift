@@ -16,7 +16,7 @@ final class StatsViewModel: ObservableObject {
     // 세션 성과(삭제 수·절약 용량)는 StatsView가 StatsStore에서 직접 읽어
     // 항상 동기화된 값을 표시한다. (뷰모델에 복사본을 두면 갱신 타이밍이 어긋남)
 
-    func load(library: PhotoLibraryService, statsStore: StatsStore) async {
+    func load(library: PhotoLibraryService) async {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }

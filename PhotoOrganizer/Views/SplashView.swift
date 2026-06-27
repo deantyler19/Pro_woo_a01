@@ -80,10 +80,12 @@ struct SplashView: View {
             withAnimation(.easeOut(duration: 0.3).delay(0.45)) {
                 subtitleOpacity = 1.0
             }
-            // 0.8초 후 메인 화면으로 전환
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
-                onFinish()
-            }
+        }
+        // 1.2초 후 메인 화면으로 전환. .task는 뷰 생명주기를 따르며 취소 시 onFinish가 호출되지 않는다.
+        .task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard !Task.isCancelled else { return }
+            onFinish()
         }
     }
 }

@@ -29,7 +29,7 @@ struct FaceGroupView: View {
         .task {
             guard !hasRun else { return }
             hasRun = true
-            service.loadPeopleAlbums()
+            await service.loadPeopleAlbums()
             if service.groups.isEmpty {
                 await service.scanFaces(photos: library.photos)
             }

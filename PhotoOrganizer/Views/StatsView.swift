@@ -38,7 +38,7 @@ struct StatsView: View {
             // 명시적 새로고침은 .refreshable이 담당한다.
             guard !hasLoaded else { return }
             hasLoaded = true
-            await vm.load(library: library, statsStore: statsStore)
+            await vm.load(library: library)
             showLimitedBanner = (library.authorizationStatus == .limited)
         }
     }
@@ -142,7 +142,7 @@ struct StatsView: View {
         }
         .background(Color.appBg)
         .refreshable {
-            await vm.load(library: library, statsStore: statsStore)
+            await vm.load(library: library)
         }
         .accessibilityLabel(vm.isLoading ? "보관함 통계를 불러오고 있습니다" : "통계")
     }
@@ -281,7 +281,7 @@ struct StatsView: View {
                 .foregroundStyle(Color.text2)
                 .multilineTextAlignment(.center)
             Button("다시 시도") {
-                Task { await vm.load(library: library, statsStore: statsStore) }
+                Task { await vm.load(library: library) }
             }
             .buttonStyle(.borderedProminent)
             .tint(Color.brand)

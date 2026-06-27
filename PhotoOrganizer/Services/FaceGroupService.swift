@@ -26,29 +26,40 @@ final class FaceGroupService: ObservableObject {
     private let imageManager = PHImageManager.default()
 
     /// Photos.app People 앨범 불러오기.
-    func loadPeopleAlbums() {
-        let result = PHAssetCollection.fetchAssetCollections(
-            with: .smartAlbum,
-            subtype: .smartAlbumPeople,
-            options: nil
-        )
-
-        var fetched: [FaceGroup] = []
-        result.enumerateObjects { collection, _, _ in
-            let assets = PHAsset.fetchAssets(in: collection, options: nil)
-            guard assets.count > 0 else { return }
-            var items: [PhotoItem] = []
-            assets.enumerateObjects { asset, _, _ in items.append(PhotoItem(asset: asset)) }
-            fetched.append(FaceGroup(
-                name: collection.localizedTitle ?? "알 수 없음",
-                subtitle: "사진 \(items.count)장",
-                items: items,
-                faceCount: 1
-            ))
-        }
-
+    /// 앨범·사진 fetch와 enumerate는 메인 스레드를 점유하므로 백그라운드에서 실행한다.
+    func loadPeopleAlbums() async {
+        let fetched = await Self.fetchPeopleAlbums()
         sourceIsPeopleAlbum = !fetched.isEmpty
         groups = fetched.sorted { $0.items.count > $1.items.count }
+    }
+
+    nonisolated private static func fetchPeopleAlbums() async -> [FaceGroup] {
+        await Task.detached(priority: .userInitiated) {
+            let result = PHAssetCollection.fetchAssetCollections(
+                with: .smartAlbum,
+                subtype: .smartAlbumPeople,
+                options: nil
+            )
+
+            // 앨범 내 사진 순서를 결정적으로 만들기 위해 정렬 옵션을 지정한다.
+            let assetOptions = PHFetchOptions()
+            assetOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+
+            var fetched: [FaceGroup] = []
+            result.enumerateObjects { collection, _, _ in
+                let assets = PHAsset.fetchAssets(in: collection, options: assetOptions)
+                guard assets.count > 0 else { return }
+                var items: [PhotoItem] = []
+                assets.enumerateObjects { asset, _, _ in items.append(PhotoItem(asset: asset)) }
+                fetched.append(FaceGroup(
+                    name: collection.localizedTitle ?? "알 수 없음",
+                    subtitle: "사진 \(items.count)장",
+                    items: items,
+                    faceCount: 1
+                ))
+            }
+            return fetched
+        }.value
     }
 
     /// Vision 기반 얼굴 수 스캔.
