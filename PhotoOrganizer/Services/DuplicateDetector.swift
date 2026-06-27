@@ -22,8 +22,6 @@ final class DuplicateDetector: ObservableObject {
     /// 해밍 거리 임계값. 작을수록 "거의 동일한" 사진만, 클수록 더 느슨하게 묶는다.
     var similarityThreshold = 6
 
-    private let imageManager = PHImageManager.default()
-
     /// 동시에 처리할 썸네일 수. 메모리 급증을 막기 위해 제한한다.
     private let maxConcurrent = 6
 
@@ -66,8 +64,9 @@ final class DuplicateDetector: ObservableObject {
     }
 
     /// 한 장의 썸네일을 받아 해시를 계산한다. 여러 개가 동시에 실행된다.
-    private func hashTask(index: Int, item: PhotoItem) async -> (Int, PhotoItem, UInt64?) {
-        guard let image = await requestSmallImage(for: item) else { return (index, item, nil) }
+    /// nonisolated이므로 @MainActor에 묶이지 않고 백그라운드에서 진짜 병렬로 돈다.
+    nonisolated private func hashTask(index: Int, item: PhotoItem) async -> (Int, PhotoItem, UInt64?) {
+        guard let image = await Self.requestSmallImage(for: item.asset) else { return (index, item, nil) }
         let hash = await Self.computeHash(from: image)
         return (index, item, hash)
     }
@@ -149,15 +148,17 @@ final class DuplicateDetector: ObservableObject {
         (a ^ b).nonzeroBitCount
     }
 
-    private func requestSmallImage(for item: PhotoItem) async -> UIImage? {
+    /// 64×64 작은 썸네일을 요청한다. PHImageManager는 thread-safe하므로 nonisolated.
+    /// 첫 콜백에서 즉시 resume하며(.fastFormat은 1회 콜백), 가드로 다중 resume을 막는다.
+    nonisolated private static func requestSmallImage(for asset: PHAsset) async -> UIImage? {
         await withCheckedContinuation { continuation in
             let options = PHImageRequestOptions()
             options.isNetworkAccessAllowed = false
             options.deliveryMode = .fastFormat
             options.resizeMode = .fast
             var resumed = false
-            imageManager.requestImage(
-                for: item.asset,
+            PHImageManager.default().requestImage(
+                for: asset,
                 targetSize: CGSize(width: 64, height: 64),
                 contentMode: .aspectFill,
                 options: options

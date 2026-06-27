@@ -23,8 +23,6 @@ final class FaceGroupService: ObservableObject {
     @Published var progress: Double = 0
     @Published var sourceIsPeopleAlbum = false
 
-    private let imageManager = PHImageManager.default()
-
     /// Photos.app People 앨범 불러오기.
     /// 앨범·사진 fetch와 enumerate는 메인 스레드를 점유하므로 백그라운드에서 실행한다.
     func loadPeopleAlbums() async {
@@ -117,8 +115,9 @@ final class FaceGroupService: ObservableObject {
     // MARK: - Private
 
     /// 한 장의 썸네일을 받아 얼굴 수를 검출한다. 여러 개가 동시에 실행된다.
-    private func faceCountTask(index: Int, item: PhotoItem) async -> (Int, PhotoItem, Int) {
-        guard let image = await requestSmall(item), let cg = image.cgImage else {
+    /// nonisolated이므로 @MainActor에 묶이지 않고 백그라운드에서 진짜 병렬로 돈다.
+    nonisolated private func faceCountTask(index: Int, item: PhotoItem) async -> (Int, PhotoItem, Int) {
+        guard let image = await Self.requestSmall(item.asset), let cg = image.cgImage else {
             return (index, item, 0)
         }
         let n = await Self.detectFaceCount(cg)
@@ -149,15 +148,16 @@ final class FaceGroupService: ObservableObject {
         }.value
     }
 
-    private func requestSmall(_ item: PhotoItem) async -> UIImage? {
+    /// 180×180 작은 썸네일을 요청한다. PHImageManager는 thread-safe하므로 nonisolated.
+    nonisolated private static func requestSmall(_ asset: PHAsset) async -> UIImage? {
         await withCheckedContinuation { cont in
             let opt = PHImageRequestOptions()
             opt.isNetworkAccessAllowed = false
             opt.deliveryMode = .fastFormat
             opt.resizeMode   = .fast
             var done = false
-            imageManager.requestImage(
-                for: item.asset,
+            PHImageManager.default().requestImage(
+                for: asset,
                 targetSize: CGSize(width: 180, height: 180),
                 contentMode: .aspectFill,
                 options: opt

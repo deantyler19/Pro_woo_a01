@@ -84,29 +84,20 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
 
     // MARK: - 변경 감지 (PHPhotoLibraryChangeObserver)
 
-    /// 보관함 변경 시 호출(백그라운드 스레드). changeDetails는 콜백 내에서 동기적으로 계산해야 한다.
+    /// 보관함 변경 시 호출(백그라운드 스레드).
+    /// `changeInstance`(PHChange)는 이 함수 스코프 내에서만 유효하므로 changeDetails를 동기로
+    /// 계산한다. — **절대 Task 클로저에 changeInstance를 캡처하지 말 것.**
+    /// fetch 결과의 read-modify-write는 fetchStore.applyChange에서 단일 락으로 원자 처리한다.
     nonisolated func photoLibraryDidChange(_ changeInstance: PHChange) {
-        var newPhotos: [PhotoItem]?
-        var newVideos: [VideoItem]?
+        let updated = fetchStore.applyChange(changeInstance)
+        guard updated.photos != nil || updated.videos != nil else { return }
 
-        if let pr = fetchStore.photos,
-           let details = changeInstance.changeDetails(for: pr) {
-            let after = details.fetchResultAfterChanges
-            fetchStore.photos = after
-            newPhotos = Self.photoItems(from: after)
-        }
-        if let vr = fetchStore.videos,
-           let details = changeInstance.changeDetails(for: vr) {
-            let after = details.fetchResultAfterChanges
-            fetchStore.videos = after
-            newVideos = Self.videoItems(from: after)
-        }
-
-        guard newPhotos != nil || newVideos != nil else { return }
-        let p = newPhotos, v = newVideos
+        // 열거(읽기 전용)는 락 밖에서 수행해도 안전하다.
+        let newPhotos = updated.photos.map { Self.photoItems(from: $0) }
+        let newVideos = updated.videos.map { Self.videoItems(from: $0) }
         Task { @MainActor [weak self] in
-            if let p { self?.photos = p }
-            if let v { self?.videos = v }
+            if let newPhotos { self?.photos = newPhotos }
+            if let newVideos { self?.videos = newVideos }
         }
     }
 
@@ -190,9 +181,14 @@ final class PhotoLibraryService: NSObject, ObservableObject, PHPhotoLibraryChang
         )
     }
 
-    /// 화면을 벗어날 때 캐시를 비운다(메모리 회수).
-    func stopAllCaching() {
-        imageManager.stopCachingAllImages()
+    /// 화면을 벗어날 때 해당 항목의 캐시만 비운다(다른 화면 캐시에 영향 없음).
+    func stopCaching(_ items: [PhotoItem], targetSize: CGSize) {
+        imageManager.stopCachingImages(
+            for: items.map(\.asset),
+            targetSize: targetSize,
+            contentMode: .aspectFill,
+            options: nil
+        )
     }
 
     func requestThumbnail(for item: PhotoItem, targetSize: CGSize) async -> UIImage? {
@@ -292,6 +288,24 @@ private final class FetchResultStore: @unchecked Sendable {
     var videos: PHFetchResult<PHAsset>? {
         get { lock.lock(); defer { lock.unlock() }; return _videos }
         set { lock.lock(); defer { lock.unlock() }; _videos = newValue }
+    }
+
+    /// 변경 적용을 단일 임계 구간에서 원자적으로 처리한다.
+    /// 저장된 fetch 결과를 읽어 changeDetails를 계산하고, after-결과로 교체한 뒤 반환한다.
+    func applyChange(_ change: PHChange)
+        -> (photos: PHFetchResult<PHAsset>?, videos: PHFetchResult<PHAsset>?) {
+        lock.lock(); defer { lock.unlock() }
+        var updatedPhotos: PHFetchResult<PHAsset>?
+        var updatedVideos: PHFetchResult<PHAsset>?
+        if let pr = _photos, let d = change.changeDetails(for: pr) {
+            _photos = d.fetchResultAfterChanges
+            updatedPhotos = _photos
+        }
+        if let vr = _videos, let d = change.changeDetails(for: vr) {
+            _videos = d.fetchResultAfterChanges
+            updatedVideos = _videos
+        }
+        return (updatedPhotos, updatedVideos)
     }
 }
 

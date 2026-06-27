@@ -15,6 +15,8 @@ struct PhotoGridScreen: View {
     @State private var showDeleteError = false
 
     private let columns = [GridItem(.adaptive(minimum: 100), spacing: 2)]
+    /// 프리페치/요청에 동일하게 쓰는 썸네일 크기(start/stop이 일치해야 캐시가 정확히 회수됨).
+    private let thumbnailCacheSize = CGSize(width: 300, height: 300)
 
     private var displayItems: [PhotoItem] {
         items.filter { !deletedIDs.contains($0.id) }
@@ -48,10 +50,10 @@ struct PhotoGridScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         // 격자 진입 시 썸네일을 미리 캐싱해 스크롤 시 즉시 표시되게 한다.
         .onAppear {
-            library.startCaching(displayItems, targetSize: CGSize(width: 300, height: 300))
+            library.startCaching(displayItems, targetSize: thumbnailCacheSize)
         }
         .onDisappear {
-            library.stopAllCaching()
+            library.stopCaching(displayItems, targetSize: thumbnailCacheSize)
         }
         .toolbar {
             // 선택 / 완료 버튼
