@@ -5,7 +5,7 @@ struct LocationGroupView: View {
     @EnvironmentObject var library: PhotoLibraryService
     @StateObject private var service = LocationService()
     @State private var hasRun = false
-    @State private var searchText = ""
+    @StateObject private var search = DebouncedSearch()
 
     var body: some View {
         NavigationStack {
@@ -19,13 +19,14 @@ struct LocationGroupView: View {
                         description: Text("위치 정보가 담긴 사진이 있으면 장소별로 묶어 드립니다.")
                     )
                 } else if filteredGroups.isEmpty && filteredNoLocation.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                    ContentUnavailableView.search(text: search.query)
                 } else {
                     locationList
                 }
             }
             .navigationTitle("장소별")
-            .searchable(text: $searchText, prompt: "장소 이름으로 검색")
+            .searchable(text: $search.query, prompt: "장소 이름으로 검색")
+            .debouncingSearch(search)
             .toolbar {
                 Button {
                     Task { await service.organize(photos: library.photos) }
@@ -60,7 +61,7 @@ struct LocationGroupView: View {
                 }
             }
 
-            if !filteredNoLocation.isEmpty && searchText.isEmpty {
+            if !filteredNoLocation.isEmpty && search.debounced.isEmpty {
                 Section("위치 정보 없음") {
                     NavigationLink {
                         PhotoGridScreen(title: "위치 정보 없음", items: filteredNoLocation)
@@ -76,9 +77,10 @@ struct LocationGroupView: View {
     // MARK: - 필터
 
     private var filteredGroups: [LocationGroup] {
-        guard !searchText.isEmpty else { return service.groups }
+        let query = search.debounced
+        guard !query.isEmpty else { return service.groups }
         return service.groups.filter {
-            $0.name.localizedCaseInsensitiveContains(searchText)
+            $0.name.localizedCaseInsensitiveContains(query)
         }
     }
 

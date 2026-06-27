@@ -3,7 +3,7 @@ import SwiftUI
 /// "날짜별" 탭. 사진을 연·월 단위로 묶고 검색을 지원한다.
 struct DateGroupView: View {
     @EnvironmentObject var library: PhotoLibraryService
-    @State private var searchText = ""
+    @StateObject private var search = DebouncedSearch()
 
     var body: some View {
         NavigationStack {
@@ -13,13 +13,14 @@ struct DateGroupView: View {
                 } else if library.photos.isEmpty {
                     ContentUnavailableView("사진이 없습니다", systemImage: "photo")
                 } else if filteredSections.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
+                    ContentUnavailableView.search(text: search.query)
                 } else {
                     sectionList
                 }
             }
             .navigationTitle("날짜별")
-            .searchable(text: $searchText, prompt: "연도 또는 월로 검색")
+            .searchable(text: $search.query, prompt: "연도 또는 월로 검색")
+            .debouncingSearch(search)
         }
     }
 
@@ -60,9 +61,10 @@ struct DateGroupView: View {
     }
 
     private var filteredSections: [DateSection] {
-        guard !searchText.isEmpty else { return allSections }
+        let query = search.debounced
+        guard !query.isEmpty else { return allSections }
         return allSections.filter {
-            $0.title.localizedCaseInsensitiveContains(searchText)
+            $0.title.localizedCaseInsensitiveContains(query)
         }
     }
 
